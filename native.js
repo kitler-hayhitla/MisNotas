@@ -104,7 +104,7 @@
 
   /* Cada vez que la app guarda datos, se reprograman los avisos */
   var saveOrig = window.save;
-  window.save = function () {
+  if (typeof saveOrig === "function") window.save = function () {
     var r0 = saveOrig.apply(this, arguments);
     sched(true);
     return r0;
@@ -126,7 +126,7 @@
       '<p class="mu" style="margin-top:8px">Pendientes: aviso el día anterior a las 6 pm y el mismo día a las 7 am.</p>' +
       '<div class="row"><button class="g" onclick="NATIVE.test()">Probar aviso</button></div></details>';
   }
-  window.vAj = function () { return vAjOrig() + card(); };
+  if (typeof vAjOrig === "function") window.vAj = function () { return vAjOrig() + card() + otaCard(); };
 
   window.NATIVE = {
     set: function (k) { NP[k] = !NP[k]; saveNP(); render(); sched(true); },
@@ -139,7 +139,7 @@
         if (pm.display !== "granted") pm = await LN.requestPermissions();
         if (pm.display !== "granted") { alert("Activa las notificaciones de Mis notas en los ajustes del teléfono."); return; }
         try { await LN.createChannel({ id: "recordatorios", name: "Recordatorios", importance: 4 }); } catch (e) {}
-        await LN.schedule({ notifications: [{ id: 9999, title: "Mis notas", body: "Así se verán tus avisos.", schedule: { at: new Date(Date.now() + 5000), allowWhileIdle: true }, channelId: "recordatorios" }] });
+        await LN.schedule({ notifications: [{ id: 9999, title: "Mis notas", body: "Así se verán tus avisos.", channelId: "recordatorios" }] });
       } catch (e) { alert("No se pudo programar el aviso de prueba."); }
     }
   };
@@ -197,6 +197,113 @@
       note("No se pudo guardar la copia", false);
     }
   };
+
+
+  /* ---------- Actualizar la app desde un archivo HTML (sin reinstalar el APK) ---------- */
+  function otaDb(mode, fn) {
+    return new Promise(function (ok, no) {
+      var q = indexedDB.open("mn_ota", 1);
+      q.onupgradeneeded = function () { q.result.createObjectStore("k"); };
+      q.onerror = function () { no(q.error); };
+      q.onsuccess = function () {
+        var tx = q.result.transaction("k", mode);
+        fn(tx.objectStore("k"));
+        tx.oncomplete = function () { ok(); };
+        tx.onerror = tx.onabort = function () { no(tx.error); };
+      };
+    });
+  }
+  function otaMsg(t, good) {
+    var e = document.getElementById("otam");
+    if (!e) { alert(t); return; }
+    e.className = "msg " + (good ? "ok" : "no");
+    e.textContent = t;
+    e.style.display = "block";
+  }
+  /* Mismos ajustes que prepare.js: fuentes locales y native.js */
+  function xform(h) {
+    if (document.querySelector('link[href="fonts/fonts.css"]')) {
+      var re = /<link rel="preconnect" href="https:\/\/fonts\.googleapis\.com">[\s\S]*?<\/noscript>/;
+      if (re.test(h)) h = h.replace(re, '<link rel="stylesheet" href="fonts/fonts.css">');
+      if (h.indexOf("var FNT={") >= 0) h = h.replace("var FNT={", "var FNT={},FNT_OFF={");
+    }
+    if (h.indexOf('<script src="native.js">') < 0) {
+      var i = h.lastIndexOf("</body>");
+      h = h.slice(0, i) + '<script src="native.js"></script>\n' + h.slice(i);
+    }
+    return h;
+  }
+  function otaCard() {
+    var o = window.MN_OTA, pre = false;
+    try { pre = !!localStorage.getItem("mn_preota_data"); } catch (e) {}
+    var st = o
+      ? 'Instalada: <b>' + esc(o.name) + '</b> · ' + new Date(o.at).toLocaleString("es", { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" })
+      : 'Usando la versión de fábrica (la del APK).';
+    return '<details class="card cp"' + AJD("u") + '><summary>Actualizar app</summary>' +
+      '<p class="mu">Elige un archivo HTML nuevo de Mis notas y la app lo usará desde ya, sin reinstalar el APK. Tus datos no se tocan.</p>' +
+      '<p class="mu">' + st + '</p>' +
+      '<div id="otam" class="msg no" style="display:none"></div>' +
+      '<input type="file" id="otaf" accept=".html,.htm,text/html" style="display:none" onchange="NATIVE.otaPick(this)">' +
+      '<div class="row"><button onclick="document.getElementById(\'otaf\').click()">Elegir archivo HTML</button>' +
+      (o ? '<button class="g" onclick="NATIVE.otaOff()">Volver a la de fábrica</button>' : '') + '</div>' +
+      (o && pre ? '<div class="row"><button class="g" onclick="NATIVE.otaData()">Recuperar mis datos de antes de actualizar</button></div>' : '') +
+      '<p class="mu" style="margin-top:8px">Si instalas un APK nuevo, la app vuelve a su versión de fábrica. Si una actualización no abre bien, la app regresa sola a la de fábrica. Usa solo archivos que tú mismo hayas generado.</p></details>';
+  }
+  window.NATIVE.otaPick = async function (inp) {
+    var f = inp.files && inp.files[0];
+    inp.value = "";
+    if (!f) return;
+    try {
+      if (f.size > 4e6) throw "El archivo es demasiado grande para ser la app.";
+      var h = await f.text();
+      if (!/<\/body>/i.test(h) || h.indexOf("localStorage") < 0 || !/Mis notas/.test(h))
+        throw "Ese archivo no parece ser la app Mis notas.";
+      if (!confirm("¿Instalar «" + f.name + "» (" + Math.round(f.size / 1024) + " KB)?\n\nSe guarda una copia de seguridad de tus datos y la app se reinicia.")) return;
+      try {
+        var dk = (typeof CFG === "object" && CFG && CFG.key) || "notas_v3", cur = localStorage.getItem(dk);
+        if (cur) { localStorage.setItem("mn_preota_key", dk); localStorage.setItem("mn_preota_data", cur); }
+      } catch (e) {}
+      await otaDb("readwrite", function (s) { s.put({ html: xform(h), name: f.name, size: f.size, at: Date.now(), base: window.MN_BUILD }, "html"); });
+      try { localStorage.setItem("mn_try", "0"); } catch (e) {}
+      location.reload();
+    } catch (e) {
+      otaMsg(typeof e === "string" ? e : "No se pudo instalar la actualización.", false);
+    }
+  };
+  window.NATIVE.otaOff = async function () {
+    if (!confirm("¿Volver a la versión de fábrica? Tus datos se conservan.")) return;
+    try {
+      await otaDb("readwrite", function (s) { s.delete("html"); });
+      try { localStorage.removeItem("mn_try"); } catch (e) {}
+      location.reload();
+    } catch (e) { otaMsg("No se pudo volver a la versión de fábrica.", false); }
+  };
+  window.NATIVE.otaData = function () {
+    if (!confirm("Esto reemplaza tus datos actuales por la copia que se guardó justo antes de la última actualización. Lo que hayas anotado después se pierde.\n\n¿Continuar?")) return;
+    try {
+      localStorage.setItem(localStorage.getItem("mn_preota_key"), localStorage.getItem("mn_preota_data"));
+      location.reload();
+    } catch (e) { otaMsg("No se pudieron recuperar los datos.", false); }
+  };
+
+  /* Vigilante: si la actualización no abre bien, vuelve sola a la de fábrica */
+  try {
+    if (localStorage.getItem("mn_ota_fail") === "1") {
+      localStorage.removeItem("mn_ota_fail");
+      setTimeout(function () { alert("La actualización no se pudo abrir y se volvió a la versión de fábrica. Tus datos están intactos."); }, 1200);
+    }
+  } catch (e) {}
+  setTimeout(function () {
+    var ok = false;
+    try { ok = typeof render === "function" && typeof DB === "object" && !!DB && document.getElementById("app").children.length > 0; } catch (e) {}
+    if (ok) { try { localStorage.setItem("mn_try", "0"); } catch (e) {} return; }
+    if (window.MN_OTA) {
+      otaDb("readwrite", function (s) { s.delete("html"); }).then(function () {
+        try { localStorage.removeItem("mn_try"); localStorage.setItem("mn_ota_fail", "1"); } catch (e) {}
+        location.reload();
+      }).catch(function () {});
+    }
+  }, 3500);
 
   /* Al abrir: ajustar avisos con los datos actuales (sin pedir permiso) */
   setTimeout(function () { reprog(false); }, 1500);

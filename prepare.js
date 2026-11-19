@@ -25,7 +25,11 @@ if (hasFonts) {
   console.log("Aviso: no hay fonts/. Corre «node fetch-fonts.js» para usar fuentes sin internet.");
 }
 
-if (!html.includes(tag)) html = html.replace("</body>", tag + "\n</body>");
-fs.writeFileSync(path.join("www", "index.html"), html);
+if (!html.includes(tag)) { const i = html.lastIndexOf("</body>"); html = html.slice(0, i) + tag + "\n" + html.slice(i); }
+// index.html = cargador (abre la actualización guardada o, si no hay, app.html);
+// app.html = la app de fábrica. BUILD cambia en cada compilación: un APK nuevo descarta actualizaciones viejas.
+const build = Date.now().toString(36);
+fs.writeFileSync(path.join("www", "index.html"), fs.readFileSync("loader.html", "utf8").replace("__BUILD__", build));
+fs.writeFileSync(path.join("www", "app.html"), html);
 fs.copyFileSync("native.js", path.join("www", "native.js"));
-console.log("Listo: www/index.html" + (hasFonts ? " (fuentes locales)" : "") + " (" + (html.length / 1024).toFixed(0) + " KB)");
+console.log("Listo: www/index.html (cargador) + www/app.html" + (hasFonts ? " (fuentes locales)" : "") + " (" + (html.length / 1024).toFixed(0) + " KB)");

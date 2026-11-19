@@ -1,7 +1,7 @@
 # Mis notas – app Android (Capacitor + GitHub)
 
 Archivos: `MN_V97.html` (la app), `native.js` (avisos, botón atrás, compartir archivos),
-`prepare.js` (genera `www/`), `fetch-fonts.js` (fuentes locales), `capacitor.config.json`,
+`loader.html` (cargador), `prepare.js` (genera `www/`), `fetch-fonts.js` (fuentes locales), `capacitor.config.json`,
 `package.json`, `debug.keystore` (firma fija) y `.github/workflows/build-apk.yml`.
 
 ## Compilar el APK con GitHub (sin Android Studio)
@@ -10,6 +10,14 @@ Archivos: `MN_V97.html` (la app), `native.js` (avisos, botón atrás, compartir 
 2. En el repositorio entra a **Actions → Compilar APK**. Corre solo en cada push a `main`,
    o con **Run workflow**.
 3. Cuando termine (unos 5–10 min), abre la ejecución y descarga **mis-notas-apk** (un zip con `app-debug.apk`).
+
+## Actualizar la app SIN reinstalar el APK
+1. Pasa el HTML nuevo al teléfono (por ejemplo descargándolo de este chat).
+2. En la app: **Ajustes → Actualizar app → Elegir archivo HTML**, confirma, y la app se reinicia con la versión nueva.
+- Tus datos no se tocan; además se guarda una copia previa (botón «Recuperar mis datos de antes de actualizar»).
+- Si la actualización no abre bien, la app vuelve sola a la versión de fábrica.
+- Si instalas un APK nuevo, la app vuelve a su versión de fábrica (la actualización guardada se descarta).
+- Archivos: `loader.html` (se vuelve `index.html` y decide qué abrir) y `native.js`. `prepare.js` deja la app de fábrica en `www/app.html`.
 
 ## Cada vez que cambies el HTML
 Reemplaza `MN_V97.html` (o cambia el nombre en `package.json`, scripts `prep` y `sync`) y haz push.
