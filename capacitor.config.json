@@ -1,0 +1,13 @@
+{
+  "appId": "com.misnotas.app",
+  "appName": "Mis notas",
+  "webDir": "www",
+  "android": {
+    "backgroundColor": "#f5f8fd"
+  },
+  "plugins": {
+    "LocalNotifications": {
+      "iconColor": "#24389C"
+    }
+  }
+}
