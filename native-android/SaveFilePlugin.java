@@ -19,6 +19,22 @@ import java.io.OutputStream;
 @CapacitorPlugin(name = "SaveFile")
 public class SaveFilePlugin extends Plugin {
 
+    /* HTML recibido por «Compartir» / «Abrir con»; lo deja MainActivity y la app lo recoge una vez. */
+    public static String pendingName;
+    public static String pendingHtml;
+
+    @PluginMethod
+    public void getShared(PluginCall call) {
+        JSObject ret = new JSObject();
+        if (pendingHtml != null) {
+            ret.put("name", pendingName);
+            ret.put("html", pendingHtml);
+            pendingName = null;
+            pendingHtml = null;
+        }
+        call.resolve(ret);
+    }
+
     @PluginMethod
     public void save(PluginCall call) {
         String path = call.getString("path");
