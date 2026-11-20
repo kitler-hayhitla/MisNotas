@@ -181,7 +181,7 @@
       if (V.t !== "ini") { go("ini"); return; }
       AP.exitApp();
     });
-    AP.addListener("appStateChange", function (s) { if (s && s.isActive) reprog(false); });
+    AP.addListener("appStateChange", function (s) { if (s && s.isActive) { reprog(false); bars(); } });
   }
 
   /* ---------- Respaldo nativo: guardar y compartir el archivo ---------- */
@@ -304,6 +304,24 @@
       }).catch(function () {});
     }
   }, 3500);
+
+
+  /* ---------- Barra de estado y fondo de arranque según el tema ---------- */
+  function bars() {
+    var m = document.querySelector('meta[name="theme-color"]'), c = m && m.getAttribute("content");
+    if (!c || !/^#[0-9a-f]{6}$/i.test(c)) return;
+    try { localStorage.setItem("mn_bg", c); } catch (e) {}
+    var SB = pl("StatusBar");
+    if (!SB) return;
+    var L = (0.299 * parseInt(c.substr(1, 2), 16) + 0.587 * parseInt(c.substr(3, 2), 16) + 0.114 * parseInt(c.substr(5, 2), 16)) / 255;
+    try { SB.setBackgroundColor({ color: c }).catch(function () {}); } catch (e) {}
+    try { SB.setStyle({ style: L > 0.6 ? "LIGHT" : "DARK" }).catch(function () {}); } catch (e) {}
+  }
+  try {
+    var mt = document.querySelector('meta[name="theme-color"]');
+    if (mt) new MutationObserver(bars).observe(mt, { attributes: true, attributeFilter: ["content"] });
+  } catch (e) {}
+  setTimeout(bars, 300);
 
   /* Al abrir: ajustar avisos con los datos actuales (sin pedir permiso) */
   setTimeout(function () { reprog(false); }, 1500);
