@@ -26,6 +26,30 @@ jobs:
           grep -c CAMERA $f
       - name: Plugin para guardar archivos en el teléfono
         run: cp native-android/*.java android/app/src/main/java/com/misnotas/app/
+      - name: Aparecer en Compartir y «Abrir con» para archivos HTML
+        run: |
+          python3 - <<'EOF'
+          p = 'android/app/src/main/AndroidManifest.xml'
+          s = open(p, encoding='utf8').read()
+          f = (
+              '        <intent-filter>\n'
+              '            <action android:name="android.intent.action.SEND" />\n'
+              '            <category android:name="android.intent.category.DEFAULT" />\n'
+              '            <data android:mimeType="text/html" />\n'
+              '        </intent-filter>\n'
+              '        <intent-filter>\n'
+              '            <action android:name="android.intent.action.VIEW" />\n'
+              '            <category android:name="android.intent.category.DEFAULT" />\n'
+              '            <data android:scheme="content" />\n'
+              '            <data android:scheme="file" />\n'
+              '            <data android:mimeType="text/html" />\n'
+              '        </intent-filter>\n'
+          )
+          assert '</activity>' in s
+          s = s.replace('</activity>', f + '    </activity>', 1)
+          open(p, 'w', encoding='utf8').write(s)
+          EOF
+          grep -c 'text/html' android/app/src/main/AndroidManifest.xml
       - name: Pantalla de carga sin el logo de Capacitor
         run: |
           python3 - <<'EOF'
@@ -50,3 +74,4 @@ jobs:
         with:
           name: mis-notas-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
+
