@@ -26,6 +26,21 @@ jobs:
           grep -c CAMERA $f
       - name: Plugin para guardar archivos en el teléfono
         run: cp native-android/*.java android/app/src/main/java/com/misnotas/app/
+      - name: Pantalla de carga sin el logo de Capacitor
+        run: |
+          python3 - <<'EOF'
+          import struct, zlib, glob
+          def png(c):
+              def ch(t, d): return struct.pack('>I', len(d)) + t + d + struct.pack('>I', zlib.crc32(t + d) & 0xffffffff)
+              return b'\x89PNG\r\n\x1a\n' + ch(b'IHDR', struct.pack('>IIBBBBB', 1, 1, 8, 2, 0, 0, 0)) + ch(b'IDAT', zlib.compress(b'\x00' + bytes(c))) + ch(b'IEND', b'')
+          data = png((0xf5, 0xf8, 0xfd))
+          fs = glob.glob('android/app/src/main/res/**/splash.png', recursive=True)
+          for f in fs: open(f, 'wb').write(data)
+          print(len(fs), 'imagenes de carga reemplazadas')
+          EOF
+          f=android/app/src/main/res/values/styles.xml
+          sed -i '/AppTheme.NoActionBarLaunch/,/<\/style>/ s#</style>#        <item name="windowSplashScreenBackground">\#f5f8fd</item>\n    </style>#' $f || true
+          grep -n -A3 NoActionBarLaunch $f || true
       - run: npx cap sync android
       - name: Usar la misma firma en cada compilación
         run: mkdir -p ~/.android && cp debug.keystore ~/.android/debug.keystore
