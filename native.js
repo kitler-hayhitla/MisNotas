@@ -249,27 +249,42 @@
       (o && pre ? '<div class="row" style="margin-top:10px"><button class="g" onclick="NATIVE.otaData()">Recuperar datos previos</button></div>' : '') +
       '<p class="mu" style="margin-top:16px;line-height:1.45">Un APK nuevo restaura la versión de fábrica. Si una actualización no abre, se restaura sola. Usar solo archivos propios.</p></details>';
   }
-  window.NATIVE.otaPick = async function (inp) {
-    var f = inp.files && inp.files[0];
-    inp.value = "";
-    if (!f) return;
+  async function otaFlow(h, name, size) {
     try {
-      if (f.size > 4e6) throw "Archivo demasiado grande.";
-      var h = await f.text();
+      if (size > 4e6) throw "Archivo demasiado grande.";
       if (!/<\/body>/i.test(h) || h.indexOf("localStorage") < 0 || !/Mis notas/.test(h))
         throw "Archivo no válido: no es la app Mis notas.";
-      if (!confirm("¿Instalar «" + f.name + "» (" + Math.round(f.size / 1024) + " KB)?\n\nSe guarda una copia previa de los datos y la app se reinicia.")) return;
+      if (!confirm("¿Instalar «" + name + "» (" + Math.round(size / 1024) + " KB)?\n\nSe guarda una copia previa de los datos y la app se reinicia.")) return;
       try {
         var dk = (typeof CFG === "object" && CFG && CFG.key) || "notas_v3", cur = localStorage.getItem(dk);
         if (cur) { localStorage.setItem("mn_preota_key", dk); localStorage.setItem("mn_preota_data", cur); }
       } catch (e) {}
-      await otaDb("readwrite", function (s) { s.put({ html: xform(h), name: f.name, size: f.size, at: Date.now(), base: window.MN_BUILD }, "html"); });
+      await otaDb("readwrite", function (s) { s.put({ html: xform(h), name: name, size: size, at: Date.now(), base: window.MN_BUILD }, "html"); });
       try { localStorage.setItem("mn_try", "0"); } catch (e) {}
       location.reload();
     } catch (e) {
       otaMsg(typeof e === "string" ? e : "No se pudo instalar la actualización.", false);
     }
+  }
+  window.NATIVE.otaPick = async function (inp) {
+    var f = inp.files && inp.files[0];
+    inp.value = "";
+    if (!f) return;
+    var h;
+    try { h = await f.text(); } catch (e) { otaMsg("No se pudo leer el archivo.", false); return; }
+    otaFlow(h, f.name, f.size);
   };
+  /* HTML recibido desde «Compartir» o «Abrir con» */
+  async function otaShared() {
+    var SF = pl("SaveFile");
+    if (!SF || !SF.getShared) return;
+    try {
+      var r = await SF.getShared();
+      if (r && r.html) otaFlow(r.html, r.name || "archivo.html", r.html.length);
+    } catch (e) {}
+  }
+  window.addEventListener("mnshared", otaShared);
+  setTimeout(otaShared, 1800);
   window.NATIVE.otaOff = async function () {
     if (!confirm("¿Volver a la versión de fábrica? Los datos se conservan.")) return;
     try {
