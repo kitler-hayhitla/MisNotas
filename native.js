@@ -117,7 +117,7 @@
   }
   function card() {
     return '<details class="card cp"' + AJD("n") + '><summary>Avisos</summary>' +
-      '<p class="mu">Recordatorios en tu teléfono, sin internet.</p>' +
+      '<p class="mu">Recordatorios locales, sin internet.</p>' +
       tg("pen", "Pendientes", NP.pen) + tg("cla", "Clases", NP.cla) +
       '<label style="margin-top:6px">Avisar las clases con</label><div class="row" style="gap:5px">' +
       [5, 10, 15, 30, 60].map(function (m) {
@@ -137,9 +137,9 @@
       try {
         var pm = await LN.checkPermissions();
         if (pm.display !== "granted") pm = await LN.requestPermissions();
-        if (pm.display !== "granted") { alert("Activa las notificaciones de Mis notas en los ajustes del teléfono."); return; }
+        if (pm.display !== "granted") { alert("Activar las notificaciones de Mis notas en los ajustes del teléfono."); return; }
         try { await LN.createChannel({ id: "recordatorios", name: "Recordatorios", importance: 4 }); } catch (e) {}
-        await LN.schedule({ notifications: [{ id: 9999, title: "Mis notas", body: "Así se verán tus avisos.", channelId: "recordatorios" }] });
+        await LN.schedule({ notifications: [{ id: 9999, title: "Mis notas", body: "Aviso de prueba.", channelId: "recordatorios" }] });
       } catch (e) { alert("No se pudo programar el aviso de prueba."); }
     }
   };
@@ -240,25 +240,25 @@
       ? 'Instalada: <b>' + esc(o.name) + '</b> · ' + new Date(o.at).toLocaleString("es", { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" })
       : 'Usando la versión de fábrica (la del APK).';
     return '<details class="card cp"' + AJD("u") + '><summary>Actualizar app</summary>' +
-      '<p class="mu">Elige un archivo HTML nuevo de Mis notas y la app lo usará desde ya, sin reinstalar el APK. Tus datos no se tocan.</p>' +
-      '<p class="mu">' + st + '</p>' +
+      '<p class="mu" style="line-height:1.45">Instala una versión nueva desde un archivo HTML, sin reinstalar el APK. Los datos no se modifican.</p>' +
+      '<p class="mu" style="margin-top:10px">' + st + '</p>' +
       '<div id="otam" class="msg no" style="display:none"></div>' +
       '<input type="file" id="otaf" accept=".html,.htm,text/html" style="display:none" onchange="NATIVE.otaPick(this)">' +
-      '<div class="row"><button onclick="document.getElementById(\'otaf\').click()">Elegir archivo HTML</button>' +
-      (o ? '<button class="g" onclick="NATIVE.otaOff()">Volver a la de fábrica</button>' : '') + '</div>' +
-      (o && pre ? '<div class="row"><button class="g" onclick="NATIVE.otaData()">Recuperar mis datos de antes de actualizar</button></div>' : '') +
-      '<p class="mu" style="margin-top:8px">Si instalas un APK nuevo, la app vuelve a su versión de fábrica. Si una actualización no abre bien, la app regresa sola a la de fábrica. Usa solo archivos que tú mismo hayas generado.</p></details>';
+      '<div class="row" style="gap:10px;margin-top:14px"><button onclick="document.getElementById(\'otaf\').click()">Elegir archivo</button>' +
+      (o ? '<button class="g" onclick="NATIVE.otaOff()">Versión de fábrica</button>' : '') + '</div>' +
+      (o && pre ? '<div class="row" style="margin-top:10px"><button class="g" onclick="NATIVE.otaData()">Recuperar datos previos</button></div>' : '') +
+      '<p class="mu" style="margin-top:16px;line-height:1.45">Un APK nuevo restaura la versión de fábrica. Si una actualización no abre, se restaura sola. Usar solo archivos propios.</p></details>';
   }
   window.NATIVE.otaPick = async function (inp) {
     var f = inp.files && inp.files[0];
     inp.value = "";
     if (!f) return;
     try {
-      if (f.size > 4e6) throw "El archivo es demasiado grande para ser la app.";
+      if (f.size > 4e6) throw "Archivo demasiado grande.";
       var h = await f.text();
       if (!/<\/body>/i.test(h) || h.indexOf("localStorage") < 0 || !/Mis notas/.test(h))
-        throw "Ese archivo no parece ser la app Mis notas.";
-      if (!confirm("¿Instalar «" + f.name + "» (" + Math.round(f.size / 1024) + " KB)?\n\nSe guarda una copia de seguridad de tus datos y la app se reinicia.")) return;
+        throw "Archivo no válido: no es la app Mis notas.";
+      if (!confirm("¿Instalar «" + f.name + "» (" + Math.round(f.size / 1024) + " KB)?\n\nSe guarda una copia previa de los datos y la app se reinicia.")) return;
       try {
         var dk = (typeof CFG === "object" && CFG && CFG.key) || "notas_v3", cur = localStorage.getItem(dk);
         if (cur) { localStorage.setItem("mn_preota_key", dk); localStorage.setItem("mn_preota_data", cur); }
@@ -271,7 +271,7 @@
     }
   };
   window.NATIVE.otaOff = async function () {
-    if (!confirm("¿Volver a la versión de fábrica? Tus datos se conservan.")) return;
+    if (!confirm("¿Volver a la versión de fábrica? Los datos se conservan.")) return;
     try {
       await otaDb("readwrite", function (s) { s.delete("html"); });
       try { localStorage.removeItem("mn_try"); } catch (e) {}
@@ -279,7 +279,7 @@
     } catch (e) { otaMsg("No se pudo volver a la versión de fábrica.", false); }
   };
   window.NATIVE.otaData = function () {
-    if (!confirm("Esto reemplaza tus datos actuales por la copia que se guardó justo antes de la última actualización. Lo que hayas anotado después se pierde.\n\n¿Continuar?")) return;
+    if (!confirm("Reemplaza los datos actuales por la copia guardada antes de la última actualización. Lo registrado después se pierde.\n\n¿Continuar?")) return;
     try {
       localStorage.setItem(localStorage.getItem("mn_preota_key"), localStorage.getItem("mn_preota_data"));
       location.reload();
@@ -290,7 +290,7 @@
   try {
     if (localStorage.getItem("mn_ota_fail") === "1") {
       localStorage.removeItem("mn_ota_fail");
-      setTimeout(function () { alert("La actualización no se pudo abrir y se volvió a la versión de fábrica. Tus datos están intactos."); }, 1200);
+      setTimeout(function () { alert("La actualización no abrió; se restauró la versión de fábrica. Datos intactos."); }, 1200);
     }
   } catch (e) {}
   setTimeout(function () {
