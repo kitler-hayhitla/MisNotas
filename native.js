@@ -284,7 +284,16 @@
     try {
       var r = await SF.getShared();
       window.MN_SHDBG = (r && r.html ? "archivo recibido · " : "ningún archivo pendiente · ") + ((r && r.dbg) || "Android no entregó datos");
-      if (r && r.html) otaFlow(r.html, r.name || "archivo.html", r.html.length);
+      if (r && r.html) {
+        var nm = r.name || "archivo", t = String(r.html).replace(/^\uFEFF/, "").trimStart();
+        if (/\.json$/i.test(nm) || (t.charAt(0) === "{" && !/<html|<!doctype/i.test(t.slice(0, 300)))) {
+          /* copia de respaldo: se restaura con el mismo flujo de «Restaurar copia» */
+          if (typeof importData === "function") {
+            try { importData({ target: { files: [new File([r.html], nm, { type: "application/json" })], value: "" } }); }
+            catch (e) { otaMsg("No se pudo abrir la copia de respaldo.", false); }
+          } else otaMsg("La app aún no está lista; vuelve a abrir el archivo.", false);
+        } else otaFlow(r.html, nm, r.html.length);
+      }
     } catch (e) { window.MN_SHDBG = "error: " + ((e && e.message) || e); }
   }
   window.addEventListener("mnshared", otaShared);
