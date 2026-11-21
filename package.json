@@ -3,8 +3,8 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "prep": "node prepare.js MN_V97.html",
-    "sync": "node prepare.js MN_V97.html && npx cap sync android",
+    "prep": "node prepare.js",
+    "sync": "node prepare.js && npx cap sync android",
     "android": "npm run sync && npx cap open android"
   },
   "dependencies": {
