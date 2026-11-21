@@ -3,8 +3,10 @@ package com.misnotas.app;
 import android.content.Intent;
 import android.database.Cursor;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.provider.OpenableColumns;
+import android.view.WindowManager;
 import com.getcapacitor.BridgeActivity;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
@@ -14,6 +16,12 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(SaveFilePlugin.class);
         super.onCreate(savedInstanceState);
+        /* Dibujar también en la zona de la cámara (notch) cuando el teléfono está en horizontal */
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            WindowManager.LayoutParams lp = getWindow().getAttributes();
+            lp.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+            getWindow().setAttributes(lp);
+        }
         if (savedInstanceState == null) {
             recibir(getIntent(), false);
         }
