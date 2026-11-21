@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Mis notas</title>
+<style>html,body{margin:0;background:#f2f5f6;color:#5b6472;font:15px sans-serif}p{padding:24px}</style>
+</head>
+<body>
+<script>
+/* Cargador de Mis notas.
+   Si hay una actualización guardada en el teléfono (Ajustes → Actualizar app) la usa;
+   si no, abre la versión de fábrica (app.html, la que viene dentro del APK). */
+(function () {
+  var BUILD = "__BUILD__";
+  window.MN_BUILD = BUILD;
+  var T = window.MN_T = { ini: Math.round(performance.now()) };
+  try { var bg = localStorage.getItem("mn_bg"); if (/^#[0-9a-f]{6}$/i.test(bg)) document.documentElement.style.background = bg; } catch (e) {}
+
+  function write(h) { T.write = Math.round(performance.now()); document.open(); document.write(h); document.close(); }
+  function fab() {
+    fetch("app.html").then(function (r) { return r.text(); }).then(write)
+      .catch(function () { document.body.innerHTML = "<p>No se pudo abrir la app.</p>"; });
+  }
+  function idb(mode, fn, cb) {
+    try {
+      var q = indexedDB.open("mn_ota", 1);
+      q.onupgradeneeded = function () { q.result.createObjectStore("k"); };
+      q.onerror = function () { cb(null); };
+      q.onsuccess = function () {
+        try {
+          var tx = q.result.transaction("k", mode), r = fn(tx.objectStore("k"));
+          tx.oncomplete = function () { cb(r && r.result !== undefined ? r.result : null); };
+          tx.onerror = tx.onabort = function () { cb(null); };
+        } catch (e) { cb(null); }
+      };
+    } catch (e) { cb(null); }
+  }
+
+  var n = 0;
+  try { n = +localStorage.getItem("mn_try") || 0; } catch (e) {}
+
+  /* Sin actualización guardada no hace falta abrir la base de datos (ahorra el arranque) */
+  var on = false;
+  try { on = localStorage.getItem("mn_ota_on") === "1"; } catch (e) {}
+  if (!on) { fab(); return; }
+
+  idb("readonly", function (s) { return s.get("html"); }, function (o) {
+    if (!(o && o.html)) { fab(); return; }
+    /* APK más nuevo que la actualización, o 3 arranques seguidos sin que la app confirme que abrió bien */
+    if (o.base !== BUILD || n >= 3) {
+      idb("readwrite", function (s) { return s.delete("html"); }, function () {
+        try {
+          localStorage.removeItem("mn_try"); localStorage.removeItem("mn_ota_on");
+          if (o.base === BUILD) localStorage.setItem("mn_ota_fail", "1");
+        } catch (e) {}
+        fab();
+      });
+      return;
+    }
+    try { localStorage.setItem("mn_try", String(n + 1)); } catch (e) {}
+    window.MN_OTA = { name: o.name, size: o.size, at: o.at };
+    write(o.html);
+  });
+})();
+</script>
+</body>
+</html>
