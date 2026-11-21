@@ -22,10 +22,12 @@ public class SaveFilePlugin extends Plugin {
     /* HTML recibido por «Compartir» / «Abrir con»; lo deja MainActivity y la app lo recoge una vez. */
     public static String pendingName;
     public static String pendingHtml;
+    public static String dbg;
 
     @PluginMethod
     public void getShared(PluginCall call) {
         JSObject ret = new JSObject();
+        ret.put("dbg", dbg);
         if (pendingHtml != null) {
             ret.put("name", pendingName);
             ret.put("html", pendingHtml);
@@ -33,6 +35,22 @@ public class SaveFilePlugin extends Plugin {
             pendingHtml = null;
         }
         call.resolve(ret);
+    }
+
+    /* Pinta de este color el fondo detrás de la app (franjas laterales al girar, bajo la barra de gestos). */
+    @PluginMethod
+    public void setBg(PluginCall call) {
+        final String c = call.getString("color", "#000000");
+        getActivity().runOnUiThread(new Runnable() {
+            public void run() {
+                try {
+                    int col = android.graphics.Color.parseColor(c);
+                    getActivity().getWindow().getDecorView().setBackgroundColor(col);
+                    getBridge().getWebView().setBackgroundColor(col);
+                } catch (Exception e) { }
+            }
+        });
+        call.resolve();
     }
 
     @PluginMethod
