@@ -26,7 +26,7 @@ jobs:
           grep -c CAMERA $f
       - name: Plugin para guardar archivos en el teléfono
         run: cp native-android/*.java android/app/src/main/java/com/misnotas/app/
-      - name: Aparecer en Compartir y «Abrir con» para archivos HTML
+      - name: Aparecer en Compartir y «Abrir con» para archivos HTML y copias .json
         run: |
           python3 - <<'EOF'
           p = 'android/app/src/main/AndroidManifest.xml'
@@ -36,6 +36,8 @@ jobs:
               '            <action android:name="android.intent.action.SEND" />\n'
               '            <category android:name="android.intent.category.DEFAULT" />\n'
               '            <data android:mimeType="text/html" />\n'
+              '            <data android:mimeType="application/json" />\n'
+              '            <data android:mimeType="text/json" />\n'
               '        </intent-filter>\n'
               '        <intent-filter>\n'
               '            <action android:name="android.intent.action.VIEW" />\n'
@@ -43,6 +45,8 @@ jobs:
               '            <data android:scheme="content" />\n'
               '            <data android:scheme="file" />\n'
               '            <data android:mimeType="text/html" />\n'
+              '            <data android:mimeType="application/json" />\n'
+              '            <data android:mimeType="text/json" />\n'
               '        </intent-filter>\n'
           )
           assert '</activity>' in s
