@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Mis notas</title>
-<style>html,body{margin:0;background:#f5f8fd;color:#5b6472;font:15px sans-serif}p{padding:24px}</style>
+<style>html,body{margin:0;background:#f2f5f6;color:#5b6472;font:15px sans-serif}p{padding:24px}</style>
 </head>
 <body>
 <script>
@@ -14,9 +14,10 @@
 (function () {
   var BUILD = "__BUILD__";
   window.MN_BUILD = BUILD;
+  var T = window.MN_T = { ini: Math.round(performance.now()) };
   try { var bg = localStorage.getItem("mn_bg"); if (/^#[0-9a-f]{6}$/i.test(bg)) document.documentElement.style.background = bg; } catch (e) {}
 
-  function write(h) { document.open(); document.write(h); document.close(); }
+  function write(h) { T.write = Math.round(performance.now()); document.open(); document.write(h); document.close(); }
   function fab() {
     fetch("app.html").then(function (r) { return r.text(); }).then(write)
       .catch(function () { document.body.innerHTML = "<p>No se pudo abrir la app.</p>"; });

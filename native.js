@@ -242,6 +242,7 @@
     return '<details class="card cp"' + AJD("u") + '><summary>Actualizar app</summary>' +
       '<p class="mu" style="line-height:1.45">Instala una versión nueva desde un archivo HTML, sin reinstalar el APK. Los datos no se modifican.</p>' +
       '<p class="mu" style="margin-top:10px">' + st + '</p>' +
+      '<p class="mu" style="font-size:.75rem;opacity:.8;word-break:break-word">Arranque: ' + esc(timing()) + '</p>' +
       '<p class="mu" style="font-size:.75rem;opacity:.8;word-break:break-word">Recepción de archivos: ' + esc(window.MN_SHDBG || "sin datos todavía") + '</p>' +
       '<div id="otam" class="msg no" style="display:none"></div>' +
       '<input type="file" id="otaf" accept=".html,.htm,text/html" style="display:none" onchange="NATIVE.otaPick(this)">' +
@@ -324,6 +325,19 @@
 
 
   /* ---------- Barra de estado y fondo de arranque según el tema ---------- */
+  /* Tiempos del arranque (ms desde que abrió la página): cargador listo, app entregada al navegador, app lista, primer dibujo */
+  var TM = window.MN_T || {};
+  function timing() {
+    var p = [];
+    if (TM.ini != null) p.push("cargador " + TM.ini);
+    if (TM.write != null) p.push("app leída " + TM.write);
+    if (TM.ready != null) p.push("lista " + TM.ready);
+    if (TM.paint != null) p.push("primer dibujo " + TM.paint);
+    return p.length ? p.join(" · ") + " ms" : "sin datos";
+  }
+  function mark(k) { TM[k] = Math.round(performance.now()); window.MN_T = TM; }
+  if (document.readyState === "complete") mark("ready"); else window.addEventListener("load", function () { mark("ready"); });
+  try { requestAnimationFrame(function () { requestAnimationFrame(function () { mark("paint"); }); }); } catch (e) {}
   function bars() {
     var m = document.querySelector('meta[name="theme-color"]'), c = m && m.getAttribute("content");
     if (!c || !/^#[0-9a-f]{6}$/i.test(c)) return;
