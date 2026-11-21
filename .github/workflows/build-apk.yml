@@ -1,0 +1,76 @@
+name: Compilar APK
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - run: npm install
+      - run: node fetch-fonts.js
+      - run: npm run prep
+      - run: npx cap add android
+      - name: Permiso de cámara (fotos de evidencias)
+        run: |
+          f=android/app/src/main/AndroidManifest.xml
+          sed -i 's#</manifest>#    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-feature android:name="android.hardware.camera" android:required="false" />\n</manifest>#' $f
+          grep -c CAMERA $f
+      - name: Plugin para guardar archivos en el teléfono
+        run: cp native-android/*.java android/app/src/main/java/com/misnotas/app/
+      - name: Aparecer en Compartir y «Abrir con» para archivos HTML
+        run: |
+          python3 - <<'EOF'
+          p = 'android/app/src/main/AndroidManifest.xml'
+          s = open(p, encoding='utf8').read()
+          f = (
+              '        <intent-filter>\n'
+              '            <action android:name="android.intent.action.SEND" />\n'
+              '            <category android:name="android.intent.category.DEFAULT" />\n'
+              '            <data android:mimeType="text/html" />\n'
+              '        </intent-filter>\n'
+              '        <intent-filter>\n'
+              '            <action android:name="android.intent.action.VIEW" />\n'
+              '            <category android:name="android.intent.category.DEFAULT" />\n'
+              '            <data android:scheme="content" />\n'
+              '            <data android:scheme="file" />\n'
+              '            <data android:mimeType="text/html" />\n'
+              '        </intent-filter>\n'
+          )
+          assert '</activity>' in s
+          s = s.replace('</activity>', f + '    </activity>', 1)
+          open(p, 'w', encoding='utf8').write(s)
+          EOF
+          grep -c 'text/html' android/app/src/main/AndroidManifest.xml
+      - name: Pantalla de carga sin el logo de Capacitor
+        run: |
+          python3 - <<'EOF'
+          import struct, zlib, glob
+          def png(c):
+              def ch(t, d): return struct.pack('>I', len(d)) + t + d + struct.pack('>I', zlib.crc32(t + d) & 0xffffffff)
+              return b'\x89PNG\r\n\x1a\n' + ch(b'IHDR', struct.pack('>IIBBBBB', 1, 1, 8, 2, 0, 0, 0)) + ch(b'IDAT', zlib.compress(b'\x00' + bytes(c))) + ch(b'IEND', b'')
+          data = png((0xf2, 0xf5, 0xf6))
+          fs = glob.glob('android/app/src/main/res/**/splash.png', recursive=True)
+          for f in fs: open(f, 'wb').write(data)
+          print(len(fs), 'imagenes de carga reemplazadas')
+          EOF
+          f=android/app/src/main/res/values/styles.xml
+          sed -i '/AppTheme.NoActionBarLaunch/,/<\/style>/ s#</style>#        <item name="windowSplashScreenBackground">\#f2f5f6</item>\n    </style>#' $f || true
+          grep -n -A3 NoActionBarLaunch $f || true
+      - run: npx cap sync android
+      - name: Usar la misma firma en cada compilación
+        run: mkdir -p ~/.android && cp debug.keystore ~/.android/debug.keystore
+      - name: Compilar
+        run: cd android && chmod +x gradlew && ./gradlew assembleDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mis-notas-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
