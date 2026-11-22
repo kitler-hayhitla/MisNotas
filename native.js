@@ -126,10 +126,12 @@
       '<p class="mu" style="margin-top:8px">Pendientes: aviso el día anterior a las 6 pm y el mismo día a las 7 am.</p>' +
       '<div class="row"><button class="g" onclick="NATIVE.test()">Probar aviso</button></div></details>';
   }
+  /* Avisos va al final del grupo «App» (antes de «Datos»); Actualizar app, al final de «Ayuda» */
   if (typeof vAjOrig === "function") window.vAj = function () {
-    var h = vAjOrig(), ay = "", m = /<h2>Ayuda<\/h2><details[\s\S]*?<\/details>/.exec(h);
-    if (m) { ay = m[0]; h = h.replace(ay, ""); }
-    return h + card() + otaCard() + ay; /* «Ayuda» siempre al final */
+    var h = vAjOrig(), k = "<h2>Datos</h2>", i = h.indexOf(k);
+    if (i >= 0) h = h.slice(0, i) + card() + h.slice(i);
+    else h += card();
+    return h + otaCard();
   };
 
   window.NATIVE = {
@@ -149,20 +151,30 @@
   };
 
   /* ---------- Guardar en el teléfono (selector de archivos de Android); si no está, compartir ---------- */
+  /* Primero la hoja de compartir de Android (WhatsApp, Drive, correo, etc.; ahí también está «Guardar en archivos»).
+     Si no está disponible o falla, se usa el selector de archivos. Devuelve false si el usuario cancela. */
   async function toDevice(w, fn, mime) {
     var SF = pl("SaveFile"), SH = pl("Share");
-    if (SF) {
-      try { var r = await SF.save({ path: w.uri, name: fn, mime: mime || "application/octet-stream" }); return !!(r && r.saved); }
-      catch (e) { /* si falla el selector, se ofrece compartir */ }
+    if (SH) {
+      try {
+        await SH.share({ title: fn, url: w.uri, dialogTitle: "Compartir archivo" });
+        return true;
+      } catch (e) {
+        if (/cancel/i.test(String(e && (e.message || e)))) return false;
+        /* si falla compartir, se intenta el selector de archivos */
+      }
     }
-    await SH.share({ title: fn, url: w.uri, dialogTitle: "Guardar archivo" });
-    return true;
+    if (SF) {
+      var r = await SF.save({ path: w.uri, name: fn, mime: mime || "application/octet-stream" });
+      return !!(r && r.saved);
+    }
+    return false;
   }
   window.NATIVE.save = async function (fn, u8, mime) {
     var FS = pl("Filesystem"), b = "", i, CH = 0x8000;
     for (i = 0; i < u8.length; i += CH) b += String.fromCharCode.apply(null, u8.subarray(i, i + CH));
     var w = await FS.writeFile({ path: fn, data: btoa(b), directory: "CACHE" });
-    if (await toDevice(w, fn, mime)) note("Archivo guardado: " + fn, true);
+    if (await toDevice(w, fn, mime)) note("Listo: " + fn, true);
   };
 
   /* ---------- Compartir / abrir cualquier archivo (adjuntos) ---------- */
@@ -195,7 +207,7 @@
     try {
       var j = await backupJSON(); /* incluye los archivos adjuntos */
       var w = await FS.writeFile({ path: fn, data: j, directory: "CACHE", encoding: "utf8" });
-      if (await toDevice(w, fn, "application/json")) { try { bkOk(); } catch (e) {} note("Copia guardada: " + fn, true); }
+      if (await toDevice(w, fn, "application/json")) { try { bkOk(); } catch (e) {} note("Copia lista: " + fn, true); }
     } catch (e) {
       if (e && /cancel/i.test(String(e.message || e))) return;
       note("No se pudo guardar la copia", false);
