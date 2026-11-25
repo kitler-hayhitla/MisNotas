@@ -7,16 +7,23 @@
   function pl(n) { return (window.Capacitor.Plugins || {})[n]; }
 
   /* ---------- Preferencias de avisos ---------- */
-  var KEY = "notas_native", NP = { pen: true, cla: true, min: 15 };
+  /* da = días antes del pendiente (0 = sin aviso previo), ha = hora de ese aviso;
+     hd = hora del aviso el mismo día (-1 = sin aviso ese día) */
+  var KEY = "notas_native", NP = { pen: true, cla: true, min: 15, da: 1, ha: 18, hd: 7 };
+  function inR(v, a, b) { return typeof v === "number" && v >= a && v <= b && v === Math.floor(v); }
   try {
     var r = JSON.parse(localStorage.getItem(KEY) || "null");
     if (r) {
       NP.pen = r.pen !== false;
       NP.cla = r.cla !== false;
       if ([5, 10, 15, 30, 60].indexOf(r.min) >= 0) NP.min = r.min;
+      if (inR(r.da, 0, 7)) NP.da = r.da;
+      if (inR(r.ha, 0, 23)) NP.ha = r.ha;
+      if (inR(r.hd, -1, 23)) NP.hd = r.hd;
     }
   } catch (e) {}
   function saveNP() { try { localStorage.setItem(KEY, JSON.stringify(NP)); } catch (e) {} }
+  function h12(h) { return (h % 12 || 12) + ":00 " + (h < 12 ? "am" : "pm"); }
 
   /* ---------- Construir los avisos desde los datos de la app ---------- */
   var MAXN = 60; /* iOS permite 64 pendientes; Android muchos más */
@@ -44,10 +51,14 @@
           sb.todos.forEach(function (t) {
             if (t.x || !t.d) return;
             var d = dstr(t.d);
-            var antes = new Date(d.getFullYear(), d.getMonth(), d.getDate() - 1, 18, 0).getTime();
-            var dia = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 7, 0).getTime();
-            if (antes > now + 10000) ev.push({ at: antes, title: "Mañana: " + t.n, body: sb.name });
-            if (dia > now + 10000) ev.push({ at: dia, title: "Hoy: " + t.n, body: sb.name });
+            if (NP.da > 0) {
+              var antes = new Date(d.getFullYear(), d.getMonth(), d.getDate() - NP.da, NP.ha, 0).getTime();
+              if (antes > now + 10000) ev.push({ at: antes, title: (NP.da === 1 ? "Mañana: " : "En " + NP.da + " días: ") + t.n, body: sb.name });
+            }
+            if (NP.hd >= 0) {
+              var dia = new Date(d.getFullYear(), d.getMonth(), d.getDate(), NP.hd, 0).getTime();
+              if (dia > now + 10000) ev.push({ at: dia, title: "Hoy: " + t.n, body: sb.name });
+            }
             if (t.k) { /* pendiente ligado a una clase: aviso antes de que empiece */
               var cb = (sm.hor || []).filter(function (b) { return b.id === t.k; })[0];
               if (cb) {
@@ -115,16 +126,32 @@
   function tg(k, l, on) {
     return '<button type="button" class="tgl" role="switch" aria-checked="' + on + '" onclick="NATIVE.set(\'' + k + '\')"><span class="tgt">' + l + '</span><span class="tgk" aria-hidden="true"></span></button>';
   }
+  function opt(v, l, sel) { return '<option value="' + v + '"' + (sel ? " selected" : "") + '>' + l + '</option>'; }
+  function hrOpts(sel, none) {
+    var s = none ? opt(-1, "No avisar", sel === -1) : "";
+    for (var h = 0; h < 24; h++) s += opt(h, h12(h), sel === h);
+    return s;
+  }
+  function pendCfg() {
+    if (!NP.pen) return "";
+    var dias = opt(0, "No avisar", NP.da === 0), n;
+    for (n = 1; n <= 7; n++) dias += opt(n, n === 1 ? "1 día antes" : n + " días antes", NP.da === n);
+    return '<label style="margin-top:6px">Aviso previo</label><div class="row" style="gap:6px">' +
+      '<select onchange="NATIVE.cfg(\'da\',this.value)">' + dias + '</select>' +
+      (NP.da > 0 ? '<select onchange="NATIVE.cfg(\'ha\',this.value)">' + hrOpts(NP.ha, false) + '</select>' : '') + '</div>' +
+      '<label style="margin-top:6px">Aviso el mismo día</label><div class="row" style="gap:6px">' +
+      '<select onchange="NATIVE.cfg(\'hd\',this.value)">' + hrOpts(NP.hd, true) + '</select></div>';
+  }
   function card() {
     return '<details class="card cp"' + AJD("n") + '><summary>Avisos</summary>' +
       '<p class="mu">Recordatorios locales, sin internet.</p>' +
       tg("pen", "Pendientes", NP.pen) + tg("cla", "Clases", NP.cla) +
+      pendCfg() +
       '<label style="margin-top:6px">Avisar las clases con</label><div class="row" style="gap:5px">' +
       [5, 10, 15, 30, 60].map(function (m) {
         return '<button class="ch' + (NP.min === m ? " on" : "") + '" onclick="NATIVE.min(' + m + ')">' + m + ' min</button>';
       }).join("") + '</div>' +
-      '<p class="mu" style="margin-top:8px">Pendientes: aviso el día anterior a las 6 pm y el mismo día a las 7 am.</p>' +
-      '<div class="row"><button class="g" onclick="NATIVE.test()">Probar aviso</button></div></details>';
+      '<div class="row" style="margin-top:10px"><button class="g" onclick="NATIVE.test()">Probar aviso</button></div></details>';
   }
   /* Avisos va al final del grupo «App» (antes de «Datos»); Actualizar app, al final de «Ayuda» */
   if (typeof vAjOrig === "function") window.vAj = function () {
@@ -137,6 +164,15 @@
   window.NATIVE = {
     set: function (k) { NP[k] = !NP[k]; saveNP(); render(); sched(true); },
     min: function (m) { NP.min = m; saveNP(); render(); sched(true); },
+    cfg: function (k, v) {
+      v = parseInt(v, 10);
+      if (isNaN(v)) return;
+      if (k === "da" && inR(v, 0, 7)) NP.da = v;
+      else if (k === "ha" && inR(v, 0, 23)) NP.ha = v;
+      else if (k === "hd" && inR(v, -1, 23)) NP.hd = v;
+      else return;
+      saveNP(); render(); sched(true);
+    },
     test: async function () {
       var LN = pl("LocalNotifications");
       if (!LN) return;
