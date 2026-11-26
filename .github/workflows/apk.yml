@@ -18,6 +18,8 @@ jobs:
       - run: npm install
       - run: node fetch-fonts.js
       - run: npm run prep
+      - name: Recortar fuentes (solo alfabeto latino)
+        run: node trim-fonts.js www/fonts
       - run: npx cap add android
       - name: Permiso de cámara (fotos de evidencias)
         run: |
