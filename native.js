@@ -1,5 +1,6 @@
 /* native.js - capa nativa de Mis notas (Capacitor). Se carga DESPUÉS de la app.
-   En navegador normal no hace nada; solo actúa dentro de la app instalada. */
+   En navegador normal no hace nada; solo actúa dentro de la app instalada.
+   Esta versión acelera adjuntos, respaldo y compartir (ver bloque «Optimización» más abajo). */
 (function () {
   var C = window.Capacitor;
   if (!C || !C.isNativePlatform || !C.isNativePlatform()) return;
@@ -186,6 +187,33 @@
     }
   };
 
+  /* ---------- Aviso breve en pantalla («Preparando…») y base64 rápido ---------- */
+  var tEl = null, tTm = 0;
+  function toastOff() { clearTimeout(tTm); if (tEl) tEl.style.display = "none"; }
+  function toast(msg, ms) {
+    try {
+      if (!tEl) {
+        tEl = document.createElement("div");
+        tEl.setAttribute("role", "status");
+        tEl.style.cssText = "position:fixed;left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom,0px));max-width:88vw;z-index:140;padding:9px 16px;border-radius:999px;background:var(--card);color:var(--tx);border:1.5px solid var(--ink);font-size:.85rem;font-weight:600;box-shadow:0 4px 16px rgba(0,0,0,.35);pointer-events:none;text-align:center";
+        document.body.appendChild(tEl);
+      }
+      tEl.textContent = msg;
+      tEl.style.display = "block";
+      clearTimeout(tTm);
+      tTm = setTimeout(toastOff, ms || 60000);
+    } catch (e) {}
+  }
+  /* Blob o Uint8Array -> base64, con el codificador nativo del navegador (mucho más rápido que armar un texto a mano) */
+  function toB64(x) {
+    return new Promise(function (ok, no) {
+      var rd = new FileReader();
+      rd.onload = function () { ok(String(rd.result).split(",")[1] || ""); };
+      rd.onerror = function () { no(rd.error); };
+      rd.readAsDataURL(x instanceof Blob ? x : new Blob([x]));
+    });
+  }
+
   /* ---------- Guardar en el teléfono (selector de archivos de Android); si no está, compartir ---------- */
   /* Primero la hoja de compartir de Android (WhatsApp, Drive, correo, etc.; ahí también está «Guardar en archivos»).
      Si no está disponible o falla, se usa el selector de archivos. Devuelve false si el usuario cancela. */
@@ -207,19 +235,31 @@
     return false;
   }
   window.NATIVE.save = async function (fn, u8, mime) {
-    var FS = pl("Filesystem"), b = "", i, CH = 0x8000;
-    for (i = 0; i < u8.length; i += CH) b += String.fromCharCode.apply(null, u8.subarray(i, i + CH));
-    var w = await FS.writeFile({ path: fn, data: btoa(b), directory: "CACHE" });
+    var FS = pl("Filesystem");
+    var w = await FS.writeFile({ path: fn, data: await toB64(u8), directory: "CACHE" });
     if (await toDevice(w, fn, mime)) note("Listo: " + fn, true);
   };
 
   /* ---------- Compartir / abrir cualquier archivo (adjuntos) ---------- */
   window.NATIVE.file = async function (fn, u8) {
-    var FS = pl("Filesystem"), SH = pl("Share"), b = "", i, CH = 0x8000;
-    for (i = 0; i < u8.length; i += CH) b += String.fromCharCode.apply(null, u8.subarray(i, i + CH));
-    var w = await FS.writeFile({ path: fn, data: btoa(b), directory: "CACHE" });
+    var FS = pl("Filesystem"), SH = pl("Share");
+    var w = await FS.writeFile({ path: fn, data: await toB64(u8), directory: "CACHE" });
     await SH.share({ title: fn, url: w.uri, dialogTitle: "Guardar archivo" });
     note("Archivo listo: " + fn, true);
+  };
+  /* Igual que file, pero recibe el Blob directo (sin pasar por arrayBuffer) */
+  window.NATIVE.fileBlob = async function (fn, blob) {
+    var FS = pl("Filesystem"), SH = pl("Share");
+    toast("Preparando archivo…");
+    try {
+      var w = await FS.writeFile({ path: fn, data: await toB64(blob), directory: "CACHE" });
+      toastOff();
+      await SH.share({ title: fn, url: w.uri, dialogTitle: "Guardar archivo" });
+      note("Archivo listo: " + fn, true);
+    } catch (e) {
+      toastOff();
+      if (!/cancel/i.test(String(e && (e.message || e)))) toast("No se pudo abrir el archivo", 3000);
+    }
   };
 
   /* ---------- Botón «atrás» de Android ---------- */
@@ -238,18 +278,119 @@
 
   /* ---------- Respaldo nativo: guardar y compartir el archivo ---------- */
   window.exportData = async function () {
-    var FS = pl("Filesystem"), SH = pl("Share");
+    var FS = pl("Filesystem");
     var fn = "mis-notas-respaldo.json";
+    toast("Preparando copia…", 120000);
     try {
       var j = await backupJSON(); /* incluye los archivos adjuntos */
-      var w = await FS.writeFile({ path: fn, data: j, directory: "CACHE", encoding: "utf8" });
-      if (await toDevice(w, fn, "application/json")) { try { bkOk(); } catch (e) {} note("Copia lista: " + fn, true); }
+      var CH = 2097152, w;
+      if (j.length <= CH) {
+        w = await FS.writeFile({ path: fn, data: j, directory: "CACHE", encoding: "utf8" });
+      } else {
+        /* Respaldo grande: se escribe en trozos de ~2 MB para no mandar todo de golpe por el puente de Capacitor */
+        var i = 0, first = true;
+        while (i < j.length) {
+          var e2 = Math.min(j.length, i + CH), cc = j.charCodeAt(e2 - 1);
+          if (e2 < j.length && cc >= 0xD800 && cc <= 0xDBFF) e2++; /* no partir un par de sustitución */
+          var part = j.slice(i, e2);
+          if (first) { w = await FS.writeFile({ path: fn, data: part, directory: "CACHE", encoding: "utf8" }); first = false; }
+          else await FS.appendFile({ path: fn, data: part, directory: "CACHE", encoding: "utf8" });
+          i = e2;
+        }
+      }
+      toastOff();
+      if (await toDevice(w, fn, "application/json")) { try { bkOk(); } catch (e3) {} note("Copia lista: " + fn, true); }
     } catch (e) {
+      toastOff();
       if (e && /cancel/i.test(String(e.message || e))) return;
       note("No se pudo guardar la copia", false);
     }
   };
 
+  /* ---------- Optimización: adjuntos, respaldo y compartir ---------- */
+  try {
+    /* Respaldo: los archivos adjuntos se leen en paralelo (antes, uno por uno) y el JSON va compacto */
+    if (typeof window.backupJSON === "function" && typeof window.fRefs === "function" && typeof window.fGet === "function") {
+      window.backupJSON = async function () {
+        var o = { ver: 3, cur: S.id, sems: DB.sems }, F = {}, ids = Object.keys(fRefs()), n = 0, k = 0;
+        async function worker() {
+          while (k < ids.length) {
+            var id = ids[k++];
+            try {
+              var r = await fGet(+id);
+              if (r) { F[id] = { n: r.n, t: r.t, d: await toB64(r.b) }; n++; }
+            } catch (e) {}
+          }
+        }
+        await Promise.all([worker(), worker(), worker(), worker()]);
+        if (n) o.files = F;
+        return JSON.stringify(o);
+      };
+    }
+
+    /* Adjuntar archivo / Tomar foto en Apuntes: las fotos grandes se reducen (como las evidencias) y se procesan 3 a la vez */
+    if (typeof window.patAdd === "function" && typeof window.fPut === "function") {
+      window.patAdd = async function (el) {
+        var fs = Array.prototype.slice.call(el.files || []);
+        el.value = "";
+        if (!fs.length) return;
+        var total = fs.length, hecho = 0, cola = fs.slice();
+        function showErr(m) { try { err(m); } catch (e) {} }
+        function prog() { toast(total > 1 ? "Procesando " + hecho + " de " + total + "…" : "Procesando archivo…"); }
+        async function uno(f) {
+          var rec = null, name = f.name || "archivo";
+          if (/^image\//.test(f.type || "") && f.size > 6e5 && typeof window.evPrep === "function") {
+            try { var r = await evPrep(f); rec = r.rec; name = r.n; } catch (e) { rec = null; }
+          }
+          if (!rec) {
+            if (f.size > FMAX) { showErr("«" + name + "» pesa más de " + Math.round(FMAX / 1048576) + " MB"); return; }
+            rec = { b: f, n: name, t: f.type || "" };
+          }
+          var id = Date.now() + (++SQ);
+          try { await fPut(id, rec); PA.push({ id: id, n: name, s: rec.b.size, t: rec.t || "" }); }
+          catch (e) { showErr("No se pudo guardar «" + name + "»"); }
+        }
+        async function obrero() {
+          while (cola.length) {
+            var f = cola.shift();
+            await uno(f);
+            hecho++;
+            prog();
+          }
+        }
+        prog();
+        try { await Promise.all([obrero(), obrero(), obrero()]); }
+        finally { toastOff(); }
+        var p = document.getElementById("pat");
+        if (p && typeof patHTML === "function") p.innerHTML = patHTML();
+      };
+    }
+
+    /* Abrir/compartir un adjunto: pasa el Blob directo al guardado (sin arrayBuffer ni bucle de texto) */
+    if (typeof window.fOpen === "function" && typeof window.fGet === "function") {
+      var fOpenOrig = window.fOpen;
+      window.fOpen = async function (id) {
+        try {
+          var r = await fGet(id);
+          if (!r) throw 0;
+          var fn = String(r.n || "archivo").replace(/[\\\/:*?"<>|]/g, "_");
+          NATIVE.fileBlob(fn, r.b);
+          return;
+        } catch (e) { return fOpenOrig.apply(this, arguments); }
+      };
+    }
+
+    /* Compartir materia y exportar semestre: se avisa al instante que se está preparando */
+    [["shareSub", "Preparando imagen…"], ["expSem", "Preparando archivo…"]].forEach(function (p) {
+      var orig = window[p[0]];
+      if (typeof orig !== "function") return;
+      window[p[0]] = async function () {
+        toast(p[1]);
+        try { return await orig.apply(this, arguments); }
+        finally { toastOff(); }
+      };
+    });
+  } catch (e) {}
 
   /* ---------- Actualizar la app desde un archivo HTML (sin reinstalar el APK) ---------- */
   function otaDb(mode, fn) {
