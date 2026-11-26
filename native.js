@@ -10,14 +10,16 @@
   /* ---------- Preferencias de avisos ---------- */
   /* da = días antes del pendiente (0 = sin aviso previo), ha = hora de ese aviso;
      hd = hora del aviso el mismo día (-1 = sin aviso ese día);
-     mp = minutos antes de la hora de apertura del pendiente (0 = sin aviso; solo si el pendiente tiene hora de apertura) */
-  var KEY = "notas_native", NP = { pen: true, cla: true, min: 15, da: 1, ha: 18, hd: 7, mp: 15 };
+     mp = minutos antes de la hora de apertura del pendiente (0 = sin aviso; solo si el pendiente tiene hora de apertura);
+     cu = modo «Personalizado» elegido a mano (muestra todos los ajustes) */
+  var KEY = "notas_native", NP = { pen: true, cla: true, min: 15, da: 1, ha: 18, hd: 7, mp: 15, cu: false };
   function inR(v, a, b) { return typeof v === "number" && v >= a && v <= b && v === Math.floor(v); }
   try {
     var r = JSON.parse(localStorage.getItem(KEY) || "null");
     if (r) {
       NP.pen = r.pen !== false;
       NP.cla = r.cla !== false;
+      NP.cu = r.cu === true; /* true = el usuario eligió «Personalizado» */
       if ([5, 10, 15, 30, 60].indexOf(r.min) >= 0) NP.min = r.min;
       if (inR(r.da, 0, 7)) NP.da = r.da;
       if (inR(r.ha, 0, 23)) NP.ha = r.ha;
@@ -139,8 +141,13 @@
     for (var h = 0; h < 24; h++) s += opt(h, h12(h), sel === h);
     return s;
   }
-  /* Panel de avisos: un bloque por tipo (Pendientes / Clases), cada uno con su interruptor y una fila por ajuste (etiqueta a la izquierda, selector a la derecha) */
+  /* Panel de avisos: interruptores de Pendientes y Clases, tres perfiles de frecuencia y «Personalizado», que muestra una fila por ajuste (etiqueta a la izquierda, selector a la derecha) */
   var SW = ' style="width:100%"', SN = ' style="width:auto;min-width:150px;max-width:100%"';
+  var PRF = {
+    t: { n: "Tranquilo", da: 0, ha: 18, hd: 7, mp: 0, min: 15 },
+    e: { n: "Equilibrado", da: 1, ha: 18, hd: 7, mp: 15, min: 15 },
+    i: { n: "Insistente", da: 2, ha: 18, hd: 7, mp: 30, min: 15 }
+  };
   function fila(lbl, inner) {
     return '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:6px 0"><span style="flex:1;min-width:0;font-size:.9rem;line-height:1.25">' + lbl + '</span><span style="flex:0 0 auto">' + inner + '</span></div>';
   }
@@ -151,19 +158,64 @@
     return '<select' + SN + ' aria-label="Minutos de anticipación" onchange="NATIVE.min(this.value)">' +
       [5, 10, 15, 30, 60].map(function (m) { return opt(m, m + " min antes", NP.min === m); }).join("") + '</select>';
   }
-  function pendFilas() {
+  /* ¿Hay algún pendiente con hora de apertura? Solo entonces tiene sentido el aviso «Antes de la apertura» */
+  function hayAp() {
+    try {
+      return DB.sems.some(function (sm) {
+        return sm.subs.some(function (sb) {
+          return sb.todos.some(function (t) { return !t.x && t.d && typeof t.ha === "number" && typeof t.hb === "number" && t.hb > t.ha; });
+        });
+      });
+    } catch (e) { return false; }
+  }
+  function partes(p, ap, conHora) {
+    var a = [];
+    if (p.da > 0) a.push((p.da === 1 ? "1 día antes" : p.da + " días antes") + (conHora ? " a las " + h12(p.ha) : ""));
+    if (p.hd >= 0) a.push("el mismo día" + (conHora ? " a las " + h12(p.hd) : ""));
+    if (p.mp > 0 && ap) a.push(p.mp + " min antes de que abra");
+    return a;
+  }
+  function une(a) { return a.length > 1 ? a.slice(0, -1).join(", ") + " y " + a[a.length - 1] : (a[0] || "sin avisos"); }
+  function descPerfil(p, ap) {
+    var a = partes(p, ap, false);
+    if (a.length === 1) return "Solo " + a[0];
+    var t = une(a);
+    return t.charAt(0).toUpperCase() + t.slice(1);
+  }
+  function perfil() {
+    if (NP.cu) return "c";
+    for (var k in PRF) { var p = PRF[k]; if (p.da === NP.da && p.ha === NP.ha && p.hd === NP.hd && p.mp === NP.mp && p.min === NP.min) return k; }
+    return "c";
+  }
+  function filaPerfil(k, nom, desc, sel) {
+    return '<button type="button" role="radio" aria-checked="' + sel + '" onclick="NATIVE.perfil(\'' + k + '\')" style="display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:9px 4px;background:none;border:0;border-top:1px solid var(--bd);color:inherit;font:inherit;cursor:pointer">' +
+      '<span style="flex:1;min-width:0"><span style="display:block;font-size:.92rem;font-weight:600">' + nom + '</span><span class="mu" style="display:block;font-size:.8rem;line-height:1.3">' + desc + '</span></span>' +
+      '<span aria-hidden="true" style="flex:0 0 auto;width:18px;height:18px;border-radius:50%;border:2px solid var(--ink);box-sizing:border-box;' + (sel ? 'background:radial-gradient(circle,var(--ink) 0 42%,transparent 48%)' : '') + '"></span></button>';
+  }
+  function pendFilas(ap) {
     var dias = opt(0, "No avisar", NP.da === 0), n;
     for (n = 1; n <= 7; n++) dias += opt(n, n === 1 ? "1 día antes" : n + " días antes", NP.da === n);
     return fila("Aviso previo", '<select' + SN + ' aria-label="Días de anticipación" onchange="NATIVE.cfg(\'da\',this.value)">' + dias + '</select>') +
       (NP.da > 0 ? fila("Hora del aviso previo", '<select' + SN + ' aria-label="Hora del aviso previo" onchange="NATIVE.cfg(\'ha\',this.value)">' + hrOpts(NP.ha, false) + '</select>') : '') +
       fila("El mismo día", '<select' + SN + ' aria-label="Hora del aviso del mismo día" onchange="NATIVE.cfg(\'hd\',this.value)">' + hrOpts(NP.hd, true) + '</select>') +
-      fila("Antes de que abra", '<select' + SN + ' aria-label="Minutos antes de la hora de apertura" onchange="NATIVE.cfg(\'mp\',this.value)">' + opt(0, "No avisar", NP.mp === 0) + [5, 10, 15, 30, 60].map(function (m) { return opt(m, m + " min antes", NP.mp === m); }).join("") + '</select>') +
+      (ap ? fila('Antes de la apertura<span class="mu" style="display:block;font-size:.76rem;line-height:1.3">Para pendientes con hora de apertura</span>', '<select' + SN + ' aria-label="Minutos antes de la hora de apertura" onchange="NATIVE.cfg(\'mp\',this.value)">' + opt(0, "No avisar", NP.mp === 0) + [5, 10, 15, 30, 60].map(function (m) { return opt(m, m + " min antes", NP.mp === m); }).join("") + '</select>') : '') +
       (NP.cla ? "" : fila("Pendiente de una clase", selMin())); /* si Clases está apagado, este ajuste vive aquí */
   }
   function card() {
+    var ap = hayAp(), pf = perfil(), h = '', filas = '';
+    if (NP.pen) {
+      h = '<div role="radiogroup" aria-label="Frecuencia de los avisos de pendientes" style="margin:0 0 6px"><div class="mu" style="font-size:.8rem;margin:0 4px 4px">Frecuencia de los pendientes</div>';
+      for (var k in PRF) h += filaPerfil(k, PRF[k].n, descPerfil(PRF[k], ap), pf === k);
+      h += filaPerfil("c", "Personalizado", "Elige cada aviso a tu manera", pf === "c") + '</div>';
+    }
+    if (NP.pen && pf === "c") filas += pendFilas(ap);
+    if (NP.cla && (pf === "c" || !NP.pen)) filas += fila("Clases: avisar con", selMin());
+    var res = (NP.pen || NP.cla) ? '<p class="mu" style="margin:8px 4px 12px;font-size:.82rem;line-height:1.4">' +
+      [NP.pen ? "Pendientes: " + une(partes(NP, ap, true)) + "." : "", NP.cla ? "Clases: " + NP.min + " min antes de empezar." : ""].filter(Boolean).join(" ") + '</p>' : '';
     return '<details class="card cp"' + AJD("n") + '><summary>Avisos</summary>' +
-      bloque(tg("pen", "Pendientes", NP.pen), NP.pen ? pendFilas() : "") +
-      bloque(tg("cla", "Clases", NP.cla), NP.cla ? fila("Avisar con", selMin()) : "") +
+      bloque(tg("pen", "Pendientes", NP.pen), "") +
+      bloque(tg("cla", "Clases", NP.cla), "") +
+      h + (filas ? '<div style="padding:2px 4px 0">' + filas + '</div>' : '') + res +
       '<button class="g"' + SW + ' onclick="NATIVE.test()">Probar aviso</button></details>';
   }
   /* Avisos va al final del grupo «App» (antes de «Datos»); Actualizar app, al final de «Ayuda» */
@@ -176,7 +228,16 @@
 
   window.NATIVE = {
     set: function (k) { NP[k] = !NP[k]; saveNP(); render(); sched(true); },
-    min: function (m) { m = parseInt(m, 10); if ([5, 10, 15, 30, 60].indexOf(m) < 0) return; NP.min = m; saveNP(); render(); sched(true); },
+    min: function (m) { m = parseInt(m, 10); if ([5, 10, 15, 30, 60].indexOf(m) < 0) return; NP.min = m; NP.cu = true; saveNP(); render(); sched(true); },
+    perfil: function (k) {
+      if (k === "c") NP.cu = true;
+      else {
+        var p = PRF[k];
+        if (!p) return;
+        NP.da = p.da; NP.ha = p.ha; NP.hd = p.hd; NP.mp = p.mp; NP.min = p.min; NP.cu = false;
+      }
+      saveNP(); render(); sched(true);
+    },
     cfg: function (k, v) {
       v = parseInt(v, 10);
       if (isNaN(v)) return;
@@ -185,6 +246,7 @@
       else if (k === "hd" && inR(v, -1, 23)) NP.hd = v;
       else if (k === "mp" && [0, 5, 10, 15, 30, 60].indexOf(v) >= 0) NP.mp = v;
       else return;
+      NP.cu = true; /* tocar un ajuste a mano deja el modo Personalizado para que las filas no desaparezcan */
       saveNP(); render(); sched(true);
     },
     test: async function () {
