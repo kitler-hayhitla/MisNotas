@@ -9,8 +9,9 @@
 
   /* ---------- Preferencias de avisos ---------- */
   /* da = días antes del pendiente (0 = sin aviso previo), ha = hora de ese aviso;
-     hd = hora del aviso el mismo día (-1 = sin aviso ese día) */
-  var KEY = "notas_native", NP = { pen: true, cla: true, min: 15, da: 1, ha: 18, hd: 7 };
+     hd = hora del aviso el mismo día (-1 = sin aviso ese día);
+     mp = minutos antes de la hora de apertura del pendiente (0 = sin aviso; solo si el pendiente tiene hora de apertura) */
+  var KEY = "notas_native", NP = { pen: true, cla: true, min: 15, da: 1, ha: 18, hd: 7, mp: 15 };
   function inR(v, a, b) { return typeof v === "number" && v >= a && v <= b && v === Math.floor(v); }
   try {
     var r = JSON.parse(localStorage.getItem(KEY) || "null");
@@ -21,6 +22,7 @@
       if (inR(r.da, 0, 7)) NP.da = r.da;
       if (inR(r.ha, 0, 23)) NP.ha = r.ha;
       if (inR(r.hd, -1, 23)) NP.hd = r.hd;
+      if ([0, 5, 10, 15, 30, 60].indexOf(r.mp) >= 0) NP.mp = r.mp;
     }
   } catch (e) {}
   function saveNP() { try { localStorage.setItem(KEY, JSON.stringify(NP)); } catch (e) {} }
@@ -59,6 +61,10 @@
             if (NP.hd >= 0) {
               var dia = new Date(d.getFullYear(), d.getMonth(), d.getDate(), NP.hd, 0).getTime();
               if (dia > now + 10000) ev.push({ at: dia, title: "Hoy: " + t.n, body: sb.name });
+            }
+            if (NP.mp > 0 && typeof t.ha === "number" && typeof t.hb === "number" && t.hb > t.ha) { /* aviso X minutos antes de que abra */
+              var ap = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, t.ha - NP.mp).getTime();
+              if (ap > now + 10000) ev.push({ at: ap, title: "Abre en " + NP.mp + " min: " + t.n, body: sb.name + " · abre a las " + hrT(t.ha) });
             }
             if (t.k) { /* pendiente ligado a una clase: aviso antes de que empiece */
               var cb = (sm.hor || []).filter(function (b) { return b.id === t.k; })[0];
@@ -125,7 +131,7 @@
   /* ---------- Tarjeta «Avisos» en Ajustes ---------- */
   var vAjOrig = window.vAj;
   function tg(k, l, on) {
-    return '<button type="button" class="tgl" role="switch" aria-checked="' + on + '" onclick="NATIVE.set(\'' + k + '\')"><span class="tgt">' + l + '</span><span class="tgk" aria-hidden="true"></span></button>';
+    return '<button type="button" class="tgl" role="switch" aria-checked="' + on + '" onclick="NATIVE.set(\'' + k + '\')"><span class="tgt" style="min-width:0;flex:1">' + l + '</span><span class="tgk" aria-hidden="true"></span></button>';
   }
   function opt(v, l, sel) { return '<option value="' + v + '"' + (sel ? " selected" : "") + '>' + l + '</option>'; }
   function hrOpts(sel, none) {
@@ -133,26 +139,26 @@
     for (var h = 0; h < 24; h++) s += opt(h, h12(h), sel === h);
     return s;
   }
-  function pendCfg() {
-    if (!NP.pen) return "";
+  /* Panel compacto: dos interruptores en una fila y una cuadrícula de 2 columnas con etiqueta sobre cada selector */
+  var SW = ' style="width:100%"';
+  function celda(lbl, inner) { return '<div style="min-width:0"><label>' + lbl + '</label>' + inner + '</div>'; }
+  function selMin() {
+    return '<select' + SW + ' aria-label="Minutos de anticipación" onchange="NATIVE.min(this.value)">' +
+      [5, 10, 15, 30, 60].map(function (m) { return opt(m, m + " min antes", NP.min === m); }).join("") + '</select>';
+  }
+  function pendCeldas() {
     var dias = opt(0, "No avisar", NP.da === 0), n;
     for (n = 1; n <= 7; n++) dias += opt(n, n === 1 ? "1 día antes" : n + " días antes", NP.da === n);
-    return '<label style="margin-top:6px">Aviso previo</label><div class="row" style="gap:6px">' +
-      '<select onchange="NATIVE.cfg(\'da\',this.value)">' + dias + '</select>' +
-      (NP.da > 0 ? '<select onchange="NATIVE.cfg(\'ha\',this.value)">' + hrOpts(NP.ha, false) + '</select>' : '') + '</div>' +
-      '<label style="margin-top:6px">Aviso el mismo día</label><div class="row" style="gap:6px">' +
-      '<select onchange="NATIVE.cfg(\'hd\',this.value)">' + hrOpts(NP.hd, true) + '</select></div>';
+    return celda("Aviso previo", '<select' + SW + ' aria-label="Días de anticipación" onchange="NATIVE.cfg(\'da\',this.value)">' + dias + '</select>') +
+      (NP.da > 0 ? celda("A las", '<select' + SW + ' aria-label="Hora del aviso previo" onchange="NATIVE.cfg(\'ha\',this.value)">' + hrOpts(NP.ha, false) + '</select>') : '<div></div>') +
+      celda("El mismo día", '<select' + SW + ' aria-label="Hora del aviso del mismo día" onchange="NATIVE.cfg(\'hd\',this.value)">' + hrOpts(NP.hd, true) + '</select>') +
+      celda("Antes de abrir", '<select' + SW + ' aria-label="Minutos antes de la hora de apertura" onchange="NATIVE.cfg(\'mp\',this.value)">' + opt(0, "No avisar", NP.mp === 0) + [5, 10, 15, 30, 60].map(function (m) { return opt(m, m + " min antes", NP.mp === m); }).join("") + '</select>');
   }
   function card() {
     return '<details class="card cp"' + AJD("n") + '><summary>Avisos</summary>' +
-      '<p class="mu">Recordatorios locales, sin internet.</p>' +
-      tg("pen", "Pendientes", NP.pen) + tg("cla", "Clases", NP.cla) +
-      pendCfg() +
-      '<label style="margin-top:6px">Avisar las clases con</label><div class="row" style="gap:5px">' +
-      [5, 10, 15, 30, 60].map(function (m) {
-        return '<button class="ch' + (NP.min === m ? " on" : "") + '" onclick="NATIVE.min(' + m + ')">' + m + ' min</button>';
-      }).join("") + '</div>' +
-      '<div class="row" style="margin-top:10px"><button class="g" onclick="NATIVE.test()">Probar aviso</button></div></details>';
+      '<div class="g2" style="margin:2px 0 4px">' + tg("pen", "Pendientes", NP.pen) + tg("cla", "Clases", NP.cla) + '</div>' +
+      '<div class="g2">' + (NP.pen ? pendCeldas() : "") + (NP.pen || NP.cla ? celda(NP.cla ? "Clases: avisar con" : "Pend. de una clase", selMin()) : "") +
+      '<div style="align-self:end"><button class="g"' + SW + ' onclick="NATIVE.test()">Probar aviso</button></div></div></details>';
   }
   /* Avisos va al final del grupo «App» (antes de «Datos»); Actualizar app, al final de «Ayuda» */
   if (typeof vAjOrig === "function") window.vAj = function () {
@@ -164,13 +170,14 @@
 
   window.NATIVE = {
     set: function (k) { NP[k] = !NP[k]; saveNP(); render(); sched(true); },
-    min: function (m) { NP.min = m; saveNP(); render(); sched(true); },
+    min: function (m) { m = parseInt(m, 10); if ([5, 10, 15, 30, 60].indexOf(m) < 0) return; NP.min = m; saveNP(); render(); sched(true); },
     cfg: function (k, v) {
       v = parseInt(v, 10);
       if (isNaN(v)) return;
       if (k === "da" && inR(v, 0, 7)) NP.da = v;
       else if (k === "ha" && inR(v, 0, 23)) NP.ha = v;
       else if (k === "hd" && inR(v, -1, 23)) NP.hd = v;
+      else if (k === "mp" && [0, 5, 10, 15, 30, 60].indexOf(v) >= 0) NP.mp = v;
       else return;
       saveNP(); render(); sched(true);
     },
@@ -363,6 +370,50 @@
         finally { toastOff(); }
         var p = document.getElementById("pat");
         if (p && typeof patHTML === "function") p.innerHTML = patHTML();
+      };
+    }
+
+    /* Evidencias (fotos): se leen a memoria antes de procesarlas (en el teléfono, las fotos del selector de Android a veces fallan si se procesan directo),
+       se procesan de a una en equipos con poca memoria, se reintenta una vez y el mensaje de error anterior se borra al empezar */
+    if (typeof window.evAdd === "function" && typeof window.evPrep === "function" && typeof window.fPut === "function") {
+      window.evAdd = async function (el) {
+        var fs = Array.prototype.slice.call(el.files || []);
+        el.value = "";
+        if (!fs.length) return;
+        var me = document.getElementById("me");
+        if (me) me.style.display = "none";
+        var total = fs.length, hecho = 0, mal = 0, cola = fs.slice(), w = document.getElementById("evw"), pr = document.createElement("div");
+        pr.className = "mu"; pr.style.cssText = "align-self:center";
+        function mostrar() {
+          var q = document.getElementById("evw");
+          if (!q) return;
+          q.innerHTML = evHTML();
+          if (hecho + mal < total) { pr.textContent = "Procesando " + (hecho + mal) + " de " + total + "…"; q.appendChild(pr); }
+        }
+        async function guardar(f) {
+          var buf = await f.arrayBuffer(), ty = f.type || "", nm = f.name || "foto", f2 = new File([buf], nm, { type: ty }), r;
+          try { r = await evPrep(f2); }
+          catch (e) { if (f2.size > FMAX) throw e; r = { n: nm, rec: { b: f2, n: nm, t: ty } }; }
+          var id = Date.now() + (++SQ);
+          await fPut(id, r.rec);
+          PA.push({ id: id, n: r.n, s: r.rec.b.size, t: r.rec.t });
+        }
+        async function uno(f) {
+          try { await guardar(f); hecho++; }
+          catch (e1) {
+            await new Promise(function (ok) { setTimeout(ok, 400); });
+            try { await guardar(f); hecho++; } catch (e2) { mal++; }
+          }
+          mostrar();
+        }
+        async function obrero() { while (cola.length) await uno(cola.shift()); }
+        mostrar();
+        var nW = (navigator.deviceMemory || 4) <= 4 ? 1 : 2, ws = [], i;
+        for (i = 0; i < nW; i++) ws.push(obrero());
+        await Promise.all(ws);
+        w = document.getElementById("evw");
+        if (w) w.innerHTML = evHTML();
+        if (mal) { try { err(mal === 1 ? "No se pudo guardar una foto" : "No se pudieron guardar " + mal + " fotos"); } catch (e) {} }
       };
     }
 
