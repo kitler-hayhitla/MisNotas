@@ -26,6 +26,8 @@ jobs:
           grep -c CAMERA $f
       - name: Plugin para guardar archivos en el teléfono
         run: cp native-android/*.java android/app/src/main/java/com/misnotas/app/
+      - name: Ícono de la app
+        run: cp -r native-android/res/* android/app/src/main/res/
       - name: Aparecer en Compartir y «Abrir con» para archivos HTML y copias .json
         run: |
           python3 - <<'EOF'
