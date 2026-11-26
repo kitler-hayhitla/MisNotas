@@ -139,26 +139,32 @@
     for (var h = 0; h < 24; h++) s += opt(h, h12(h), sel === h);
     return s;
   }
-  /* Panel compacto: dos interruptores en una fila y una cuadrícula de 2 columnas con etiqueta sobre cada selector */
-  var SW = ' style="width:100%"';
-  function celda(lbl, inner) { return '<div style="min-width:0"><label>' + lbl + '</label>' + inner + '</div>'; }
+  /* Panel de avisos: un bloque por tipo (Pendientes / Clases), cada uno con su interruptor y una fila por ajuste (etiqueta a la izquierda, selector a la derecha) */
+  var SW = ' style="width:100%"', SN = ' style="width:auto;min-width:150px;max-width:100%"';
+  function fila(lbl, inner) {
+    return '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:6px 0"><span style="flex:1;min-width:0;font-size:.9rem;line-height:1.25">' + lbl + '</span><span style="flex:0 0 auto">' + inner + '</span></div>';
+  }
+  function bloque(sw, filas) {
+    return '<div style="margin:2px 0 14px">' + sw + (filas ? '<div style="padding:2px 4px 0">' + filas + '</div>' : '') + '</div>';
+  }
   function selMin() {
-    return '<select' + SW + ' aria-label="Minutos de anticipación" onchange="NATIVE.min(this.value)">' +
+    return '<select' + SN + ' aria-label="Minutos de anticipación" onchange="NATIVE.min(this.value)">' +
       [5, 10, 15, 30, 60].map(function (m) { return opt(m, m + " min antes", NP.min === m); }).join("") + '</select>';
   }
-  function pendCeldas() {
+  function pendFilas() {
     var dias = opt(0, "No avisar", NP.da === 0), n;
     for (n = 1; n <= 7; n++) dias += opt(n, n === 1 ? "1 día antes" : n + " días antes", NP.da === n);
-    return celda("Aviso previo", '<select' + SW + ' aria-label="Días de anticipación" onchange="NATIVE.cfg(\'da\',this.value)">' + dias + '</select>') +
-      (NP.da > 0 ? celda("A las", '<select' + SW + ' aria-label="Hora del aviso previo" onchange="NATIVE.cfg(\'ha\',this.value)">' + hrOpts(NP.ha, false) + '</select>') : '<div></div>') +
-      celda("El mismo día", '<select' + SW + ' aria-label="Hora del aviso del mismo día" onchange="NATIVE.cfg(\'hd\',this.value)">' + hrOpts(NP.hd, true) + '</select>') +
-      celda("Antes de abrir", '<select' + SW + ' aria-label="Minutos antes de la hora de apertura" onchange="NATIVE.cfg(\'mp\',this.value)">' + opt(0, "No avisar", NP.mp === 0) + [5, 10, 15, 30, 60].map(function (m) { return opt(m, m + " min antes", NP.mp === m); }).join("") + '</select>');
+    return fila("Aviso previo", '<select' + SN + ' aria-label="Días de anticipación" onchange="NATIVE.cfg(\'da\',this.value)">' + dias + '</select>') +
+      (NP.da > 0 ? fila("Hora del aviso previo", '<select' + SN + ' aria-label="Hora del aviso previo" onchange="NATIVE.cfg(\'ha\',this.value)">' + hrOpts(NP.ha, false) + '</select>') : '') +
+      fila("El mismo día", '<select' + SN + ' aria-label="Hora del aviso del mismo día" onchange="NATIVE.cfg(\'hd\',this.value)">' + hrOpts(NP.hd, true) + '</select>') +
+      fila("Antes de que abra", '<select' + SN + ' aria-label="Minutos antes de la hora de apertura" onchange="NATIVE.cfg(\'mp\',this.value)">' + opt(0, "No avisar", NP.mp === 0) + [5, 10, 15, 30, 60].map(function (m) { return opt(m, m + " min antes", NP.mp === m); }).join("") + '</select>') +
+      (NP.cla ? "" : fila("Pendiente de una clase", selMin())); /* si Clases está apagado, este ajuste vive aquí */
   }
   function card() {
     return '<details class="card cp"' + AJD("n") + '><summary>Avisos</summary>' +
-      '<div class="g2" style="margin:2px 0 4px">' + tg("pen", "Pendientes", NP.pen) + tg("cla", "Clases", NP.cla) + '</div>' +
-      '<div class="g2">' + (NP.pen ? pendCeldas() : "") + (NP.pen || NP.cla ? celda(NP.cla ? "Clases: avisar con" : "Pend. de una clase", selMin()) : "") +
-      '<div style="align-self:end"><button class="g"' + SW + ' onclick="NATIVE.test()">Probar aviso</button></div></div></details>';
+      bloque(tg("pen", "Pendientes", NP.pen), NP.pen ? pendFilas() : "") +
+      bloque(tg("cla", "Clases", NP.cla), NP.cla ? fila("Avisar con", selMin()) : "") +
+      '<button class="g"' + SW + ' onclick="NATIVE.test()">Probar aviso</button></details>';
   }
   /* Avisos va al final del grupo «App» (antes de «Datos»); Actualizar app, al final de «Ayuda» */
   if (typeof vAjOrig === "function") window.vAj = function () {
