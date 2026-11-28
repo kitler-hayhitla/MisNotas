@@ -7,6 +7,10 @@
 
   function pl(n) { return (window.Capacitor.Plugins || {})[n]; }
 
+  /* MN_V209: logo (birrete) en las notificaciones. Los PNG viven en android/app/src/main/res/
+     (drawable-DPI/ic_stat_notify.png = ícono blanco de la barra de estado; drawable-nodpi/ic_notify_large.png = logo grande). */
+  function brand(n) { n.smallIcon = "ic_stat_notify"; n.largeIcon = "ic_notify_large"; n.iconColor = "#4AA8FF"; return n; }
+
   /* ---------- Preferencias de avisos ---------- */
   /* da = días antes del pendiente (0 = sin aviso previo), ha = hora de ese aviso;
      hd = hora del aviso el mismo día (-1 = sin aviso ese día);
@@ -108,7 +112,7 @@
       }
       if (pm.display !== "granted") return;
       try { await LN.createChannel({ id: "recordatorios", name: "Recordatorios", importance: 4 }); } catch (e) {}
-      await LN.schedule({ notifications: items });
+      await LN.schedule({ notifications: items.map(brand) });
     } catch (e) {
     } finally {
       busy = false;
@@ -258,7 +262,7 @@
         if (pm.display !== "granted") pm = await LN.requestPermissions();
         if (pm.display !== "granted") { alert("Activar las notificaciones de Mis notas en los ajustes del teléfono."); return; }
         try { await LN.createChannel({ id: "recordatorios", name: "Recordatorios", importance: 4 }); } catch (e) {}
-        await LN.schedule({ notifications: [{ id: 9999, title: "Mis notas", body: "Aviso de prueba.", channelId: "recordatorios" }] });
+        await LN.schedule({ notifications: [brand({ id: 9999, title: "Mis notas", body: "Aviso de prueba.", channelId: "recordatorios" })] });
       } catch (e) { alert("No se pudo programar el aviso de prueba."); }
     }
   };
